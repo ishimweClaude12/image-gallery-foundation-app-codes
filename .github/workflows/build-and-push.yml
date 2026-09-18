@@ -33,7 +33,7 @@ jobs:
           # Set AWS_ROLE_ARN as a repository variable to the CI role created by
           # the foundation stack (output kivu-gallery-ci-role-arn).
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Log in to Amazon ECR
         id: ecr
