@@ -1,0 +1,12 @@
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        # CodeDeploy replaces <TASK_DEFINITION> with the task definition it
+        # registers from taskdef.json during the deployment.
+        TaskDefinition: "<TASK_DEFINITION>"
+        LoadBalancerInfo:
+          ContainerName: "kivu-gallery-app"
+          ContainerPort: 3000
+        PlatformVersion: "LATEST"

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kivu Gallery</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2029;
+      --accent: #2dd4bf;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --border: #2a323d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 28px 20px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.5px; }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; }
+    main { max-width: 1000px; margin: 0 auto; padding: 24px 20px 60px; }
+    .uploader {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 32px;
+      display: grid;
+      gap: 12px;
+    }
+    .uploader input[type="text"],
+    .uploader input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .uploader button {
+      justify-self: start;
+      padding: 10px 20px;
+      background: var(--accent);
+      color: #05201c;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .uploader button:disabled { opacity: 0.6; cursor: default; }
+    .status { font-size: 0.85rem; color: var(--muted); min-height: 1em; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .tile {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .tile img { width: 100%; height: 180px; object-fit: cover; display: block; }
+    .tile .caption { padding: 12px 14px; font-size: 0.9rem; color: var(--text); }
+    .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kivu Gallery</h1>
+    <p>Upload a photo with a description. Images are served through CloudFront.</p>
+  </header>
+
+  <main>
+    <div class="uploader">
+      <input type="file" id="file" accept="image/*" />
+      <input type="text" id="description" placeholder="Describe this photo" maxlength="500" />
+      <button id="uploadBtn">Upload</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const status = document.getElementById('status');
+    const btn = document.getElementById('uploadBtn');
+
+    async function loadPhotos() {
+      try {
+        const res = await fetch('/api/photos');
+        if (!res.ok) throw new Error('request failed');
+        const photos = await res.json();
+        if (!photos.length) {
+          grid.innerHTML = '<div class="empty">No photos yet. Upload the first one.</div>';
+          return;
+        }
+        grid.innerHTML = photos.map((p) => `
+          <div class="tile">
+            <img src="${p.url}" alt="${escapeHtml(p.description)}" loading="lazy" />
+            <div class="caption">${escapeHtml(p.description) || '<span style="color:var(--muted)">No description</span>'}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        grid.innerHTML = '<div class="empty">Could not load photos.</div>';
+      }
+    }
+
+    function escapeHtml(s) {
+      return (s || '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    btn.addEventListener('click', async () => {
+      const fileInput = document.getElementById('file');
+      const description = document.getElementById('description').value;
+      if (!fileInput.files.length) {
+        status.textContent = 'Please choose an image first.';
+        return;
+      }
+      const form = new FormData();
+      form.append('image', fileInput.files[0]);
+      form.append('description', description);
+
+      btn.disabled = true;
+      status.textContent = 'Uploading...';
+      try {
+        const res = await fetch('/api/photos', { method: 'POST', body: form });
+        if (!res.ok) throw new Error('upload failed');
+        status.textContent = 'Uploaded.';
+        fileInput.value = '';
+        document.getElementById('description').value = '';
+        await loadPhotos();
+      } catch (err) {
+        status.textContent = 'Upload failed. Please try again.';
+      } finally {
+        btn.disabled = false;
+        setTimeout(() => (status.textContent = ''), 3000);
+      }
+    });
+
+    loadPhotos();
+  </script>
+</body>
+</html>

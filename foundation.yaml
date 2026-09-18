@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Kivu Gallery foundation stack (deployed via Git sync). Shared, slow-changing
+  resources that the application and infrastructure repos depend on: the ECR
+  repository, the private image bucket, the pipeline artifact bucket, the
+  GitHub OIDC provider, and the GitHub Actions CI role. All values other repos
+  need are published as cross-stack Exports.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: kivu-gallery
+    Description: Prefix used to name and tag project resources.
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization or username that owns the repositories.
+  AppRepoName:
+    Type: String
+    Default: nodejs-application
+    Description: Application repo allowed to assume the CI role via OIDC.
+
+Resources:
+
+  # -------------------------------------------------------------------------
+  # Container registry for the application image.
+  # Mutable tags so the workflow can move the "latest" tag on each push, which
+  # is what the pipeline's ECR source action tracks to start a deploy. Every
+  # image is also tagged with its commit SHA for traceability. Scans on push;
+  # keeps only the 10 most recent images.
+  # -------------------------------------------------------------------------
+  AppEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-app'
+      ImageTagMutability: MUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the 10 most recent images, expire older ones.",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # Private image bucket. No public access at all. The bucket policy that
+  # grants read access to the CloudFront distribution lives in the
+  # infrastructure stack, because it needs the distribution ARN.
+  # -------------------------------------------------------------------------
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-images-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # Pipeline artifact bucket. Versioning is required by CodePipeline. Old
+  # noncurrent versions expire after 30 days to keep it tidy.
+  # -------------------------------------------------------------------------
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-artifacts-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-artifact-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # GitHub OIDC identity provider. Lets GitHub Actions exchange a short-lived
+  # workflow token for AWS credentials, so no long-lived keys are stored.
+  # -------------------------------------------------------------------------
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # -------------------------------------------------------------------------
+  # CI role assumed by the application repo's GitHub Actions workflow.
+  # Scoped to: push to this ECR repo, and write build artifacts to the
+  # artifact bucket. Trust is locked to the nodejs-application repo.
+  # -------------------------------------------------------------------------
+  GitHubActionsCiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ci-role'
+      Description: Assumed by GitHub Actions (app repo) via OIDC to build/push images and upload artifacts.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${AppRepoName}:*'
+      Policies:
+        - PolicyName: ecr-push
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EcrAuthToken
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: EcrPushPull
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !GetAtt AppEcrRepository.Arn
+        - PolicyName: artifact-upload
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArtifactReadWrite
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+        - PolicyName: read-deploy-parameters
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Lets the workflow read the infra-published values it needs to
+              # render taskdef.json (role ARNs, DB endpoint, CloudFront domain).
+              - Sid: ReadDeploySsmParameters
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/deploy/*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  AppEcrRepositoryUri:
+    Description: ECR repository URI (push target for the app build).
+    Value: !GetAtt AppEcrRepository.RepositoryUri
+    Export:
+      Name: !Sub '${ProjectName}-ecr-uri'
+
+  AppEcrRepositoryArn:
+    Value: !GetAtt AppEcrRepository.Arn
+    Export:
+      Name: !Sub '${ProjectName}-ecr-arn'
+
+  AppEcrRepositoryName:
+    Value: !Ref AppEcrRepository
+    Export:
+      Name: !Sub '${ProjectName}-ecr-name'
+
+  ImageBucketName:
+    Value: !Ref ImageBucket
+    Export:
+      Name: !Sub '${ProjectName}-image-bucket-name'
+
+  ImageBucketArn:
+    Value: !GetAtt ImageBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-image-bucket-arn'
+
+  ImageBucketRegionalDomainName:
+    Description: Regional domain name, used as the CloudFront origin in the infra stack.
+    Value: !GetAtt ImageBucket.RegionalDomainName
+    Export:
+      Name: !Sub '${ProjectName}-image-bucket-domain'
+
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Sub '${ProjectName}-artifact-bucket-name'
+
+  ArtifactBucketArn:
+    Value: !GetAtt ArtifactBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-artifact-bucket-arn'
+
+  CiRoleArn:
+    Description: Set this as a secret/variable in the app repo for the aws-actions/configure-aws-credentials step.
+    Value: !GetAtt GitHubActionsCiRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-ci-role-arn'

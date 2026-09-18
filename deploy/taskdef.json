@@ -1,0 +1,44 @@
+{
+  "family": "kivu-gallery-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "<EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "kivu-gallery-app",
+      "image": "<IMAGE1_NAME>",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3000" },
+        { "name": "AWS_REGION", "value": "<AWS_REGION>" },
+        { "name": "S3_BUCKET", "value": "<IMAGE_BUCKET>" },
+        { "name": "CLOUDFRONT_DOMAIN", "value": "<CLOUDFRONT_DOMAIN>" },
+        { "name": "DB_HOST", "value": "<DB_HOST>" },
+        { "name": "DB_PORT", "value": "5432" },
+        { "name": "DB_NAME", "value": "<DB_NAME>" },
+        { "name": "DB_USER", "value": "<DB_USER>" }
+      ],
+      "secrets": [
+        { "name": "DB_PASSWORD", "valueFrom": "<DB_SECRET_ARN>:password::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "<LOG_GROUP>",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "app"
+        }
+      }
+    }
+  ]
+}

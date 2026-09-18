@@ -1,0 +1,119 @@
+name: build-and-push
+
+on:
+  # Every push, on every branch (and tag).
+  push:
+  workflow_dispatch:
+
+# Required for OIDC federation with AWS (no long-lived credentials).
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-north-1
+  PROJECT: kivu-gallery
+  ECR_REPO: kivu-gallery-app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm test
+
+  build-push-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Set AWS_ROLE_ARN as a repository variable to the CI role created by
+          # the foundation stack (output kivu-gallery-ci-role-arn).
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$REGISTRY/${ECR_REPO}"
+          docker build -t "$IMAGE_URI:${{ github.sha }}" .
+          # Every branch gets an immutable SHA tag for traceability. This push
+          # does not start a deployment; only moving "latest" does.
+          docker push "$IMAGE_URI:${{ github.sha }}"
+
+      - name: Promote image to latest (starts the blue/green deploy)
+        if: github.ref == 'refs/heads/main'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$REGISTRY/${ECR_REPO}"
+          docker tag "$IMAGE_URI:${{ github.sha }}" "$IMAGE_URI:latest"
+          # The pipeline's ECR source action watches "latest", so this is the
+          # push that deploys. Restricted to main so branch pushes only build.
+          docker push "$IMAGE_URI:latest"
+
+      - name: Generate and upload deploy bundle
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          PREFIX="/${PROJECT}/deploy"
+
+          # The deploy bundle needs values published by the infrastructure
+          # stack. If they are not there yet, skip this step so the image push
+          # still succeeds. Deploy aws-infrastructure, then re-run this workflow.
+          if ! aws ssm get-parameter --name "$PREFIX/execution-role-arn" >/dev/null 2>&1; then
+            echo "Infrastructure parameters not found under $PREFIX."
+            echo "Image is in ECR. Deploy aws-infrastructure, then re-run to publish the deploy bundle."
+            exit 0
+          fi
+
+          get() { aws ssm get-parameter --name "$PREFIX/$1" --query 'Parameter.Value' --output text; }
+          EXEC_ROLE_ARN=$(get execution-role-arn)
+          TASK_ROLE_ARN=$(get task-role-arn)
+          LOG_GROUP=$(get log-group)
+          IMAGE_BUCKET=$(get image-bucket)
+          CLOUDFRONT_DOMAIN=$(get cloudfront-domain)
+          DB_HOST=$(get db-host)
+          DB_NAME=$(get db-name)
+          DB_USER=$(get db-user)
+          DB_SECRET_ARN=$(get db-secret-arn)
+
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ARTIFACT_BUCKET="${PROJECT}-artifacts-${ACCOUNT_ID}-${AWS_REGION}"
+
+          mkdir -p build
+          # Fill every placeholder except <IMAGE1_NAME>, which the pipeline
+          # replaces with the pushed image URI at deploy time.
+          sed \
+            -e "s|<EXECUTION_ROLE_ARN>|${EXEC_ROLE_ARN}|g" \
+            -e "s|<TASK_ROLE_ARN>|${TASK_ROLE_ARN}|g" \
+            -e "s|<LOG_GROUP>|${LOG_GROUP}|g" \
+            -e "s|<AWS_REGION>|${AWS_REGION}|g" \
+            -e "s|<IMAGE_BUCKET>|${IMAGE_BUCKET}|g" \
+            -e "s|<CLOUDFRONT_DOMAIN>|${CLOUDFRONT_DOMAIN}|g" \
+            -e "s|<DB_HOST>|${DB_HOST}|g" \
+            -e "s|<DB_NAME>|${DB_NAME}|g" \
+            -e "s|<DB_USER>|${DB_USER}|g" \
+            -e "s|<DB_SECRET_ARN>|${DB_SECRET_ARN}|g" \
+            deploy/taskdef.json > build/taskdef.json
+          cp deploy/appspec.yaml build/appspec.yaml
+
+          cd build
+          zip -j config-source.zip taskdef.json appspec.yaml
+          aws s3 cp config-source.zip "s3://${ARTIFACT_BUCKET}/config-source.zip"
+          echo "Uploaded config-source.zip to ${ARTIFACT_BUCKET}"
