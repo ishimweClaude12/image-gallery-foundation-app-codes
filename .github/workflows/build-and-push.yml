@@ -3,17 +3,11 @@ name: build-and-push
 on:
   # Every push, on every branch (and tag).
   push:
-  workflow_dispatch:
 
 # Required for OIDC federation with AWS (no long-lived credentials).
 permissions:
   id-token: write
   contents: read
-
-env:
-  AWS_REGION: eu-north-1
-  PROJECT: kivu-gallery
-  ECR_REPO: kivu-gallery-app
 
 jobs:
   test:
@@ -27,6 +21,7 @@ jobs:
       - run: npm test
 
   build-push-deploy:
+    environment: dev
     needs: test
     runs-on: ubuntu-latest
     steps:
