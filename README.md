@@ -24,6 +24,7 @@ nodejs-application/
 ├── src/
 │   ├── app.js       # Express routes
 │   ├── server.js    # entrypoint, initialises the DB table then listens
+│   ├── env.js       # loads .env for local runs
 │   ├── db.js        # pg pool + queries
 │   └── s3.js        # S3 upload + CloudFront URL builder
 ├── public/
@@ -33,6 +34,7 @@ nodejs-application/
 ├── deploy/
 │   ├── appspec.yaml # CodeDeploy ECS blue/green appspec
 │   └── taskdef.json # task definition template (placeholders)
+├── docker-compose.yml # local Postgres for development
 ├── Dockerfile
 ├── .github/workflows/build-and-push.yml
 └── package.json
@@ -48,14 +50,68 @@ nodejs-application/
 | `CLOUDFRONT_DOMAIN` | Distribution domain for building image URLs |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | RDS connection |
 | `DB_PASSWORD` | Injected from Secrets Manager via the task definition |
+| `DB_SSL` | Set to `false` for a local Postgres without TLS (RDS needs TLS) |
 
 ## Run and test locally
 
-```bash
-npm install
-npm test          # runs the node:test suite
-npm start         # needs DB_* and S3_BUCKET set to do anything useful
-```
+RDS is private and only reachable from the ECS tasks, so local development uses
+a Postgres container instead. `npm start` loads `.env` automatically when it
+exists (`src/env.js`); the container has no `.env` and uses the task definition.
+
+Prerequisites: Node 20+, Docker, and AWS credentials for the account (uploads
+go to S3).
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Start the local database (Postgres 16, credentials in `docker-compose.yml`):
+
+   ```bash
+   docker compose up -d db
+   ```
+
+3. Create `.env` in the project root (it is gitignored):
+
+   ```bash
+   PORT=3000
+   AWS_REGION=eu-north-1
+
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=kivugallery
+   DB_USER=galleryadmin
+   DB_PASSWORD=localdev
+   DB_SSL=false
+
+   S3_BUCKET=kivu-gallery-images-<account-id>-eu-north-1
+   CLOUDFRONT_DOMAIN=<distribution>.cloudfront.net
+   ```
+
+   `S3_BUCKET` and `CLOUDFRONT_DOMAIN` are published by the infrastructure
+   stack under the SSM path `/kivu-gallery/deploy/` (`image-bucket` and
+   `cloudfront-domain`).
+
+4. Start the app and open http://localhost:3000:
+
+   ```bash
+   npm start
+   ```
+
+   The log should show `Database ready`; the `photos` table is created on
+   first start.
+
+5. Run the tests (no database or AWS needed):
+
+   ```bash
+   npm test
+   ```
+
+Uploads from a local run go to the real S3 bucket, so they show up next to the
+deployed app's images. Stop the database with `docker compose down` (add `-v`
+to also delete its data).
 
 ## CI/CD: one-time setup
 

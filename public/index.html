@@ -73,6 +73,74 @@
     .tile img { width: 100%; height: 180px; object-fit: cover; display: block; }
     .tile .caption { padding: 12px 14px; font-size: 0.9rem; color: var(--text); }
     .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+    .tile img { cursor: zoom-in; }
+    .viewer {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--text);
+    }
+    .viewer::backdrop { background: rgba(5, 8, 12, 0.94); }
+    .viewer figure {
+      margin: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 56px 16px 24px;
+    }
+    .viewer img {
+      max-width: 100%;
+      max-height: calc(100vh - 140px);
+      object-fit: contain;
+      border-radius: 6px;
+    }
+    .viewer figcaption { color: var(--muted); font-size: 0.95rem; text-align: center; max-width: 70ch; }
+    .viewer .close {
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--text);
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .viewer .nav {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px;
+      height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--text);
+      font-size: 1.6rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+    .viewer .nav:hover { opacity: 1; }
+    .viewer .nav.prev { left: 16px; }
+    .viewer .nav.next { right: 16px; }
+    .viewer .nav[hidden] { display: none; }
+    .viewer figure { padding-left: 80px; padding-right: 80px; }
+    @media (max-width: 600px) {
+      .viewer figure { padding-left: 16px; padding-right: 16px; }
+      .viewer .nav { top: auto; bottom: 16px; transform: none; }
+    }
   </style>
 </head>
 <body>
@@ -92,10 +160,23 @@
     <div class="grid" id="grid"></div>
   </main>
 
+  <dialog class="viewer" id="viewer" aria-label="Photo viewer">
+    <button class="close" id="viewerClose" aria-label="Close">&times;</button>
+    <button class="nav prev" id="viewerPrev" aria-label="Previous photo">&lsaquo;</button>
+    <button class="nav next" id="viewerNext" aria-label="Next photo">&rsaquo;</button>
+    <figure>
+      <img id="viewerImg" alt="" />
+      <figcaption id="viewerCaption"></figcaption>
+    </figure>
+  </dialog>
+
   <script>
     const grid = document.getElementById('grid');
     const status = document.getElementById('status');
     const btn = document.getElementById('uploadBtn');
+    const viewer = document.getElementById('viewer');
+    const viewerImg = document.getElementById('viewerImg');
+    const viewerCaption = document.getElementById('viewerCaption');
 
     async function loadPhotos() {
       try {
@@ -108,7 +189,7 @@
         }
         grid.innerHTML = photos.map((p) => `
           <div class="tile">
-            <img src="${p.url}" alt="${escapeHtml(p.description)}" loading="lazy" />
+            <img src="${p.url}" data-caption="${escapeHtml(p.description)}" alt="${escapeHtml(p.description)}" loading="lazy" />
             <div class="caption">${escapeHtml(p.description) || '<span style="color:var(--muted)">No description</span>'}</div>
           </div>
         `).join('');
@@ -116,6 +197,45 @@
         grid.innerHTML = '<div class="empty">Could not load photos.</div>';
       }
     }
+
+    const prevBtn = document.getElementById('viewerPrev');
+    const nextBtn = document.getElementById('viewerNext');
+    let viewerPhotos = [];
+    let viewerIndex = 0;
+
+    function showPhoto(index) {
+      // Wrap around at both ends.
+      viewerIndex = (index + viewerPhotos.length) % viewerPhotos.length;
+      const img = viewerPhotos[viewerIndex];
+      viewerImg.src = img.src;
+      viewerImg.alt = img.alt;
+      viewerCaption.textContent = img.dataset.caption;
+    }
+
+    // Open the clicked photo full screen. Esc closes the dialog natively.
+    grid.addEventListener('click', (e) => {
+      const img = e.target.closest('.tile img');
+      if (!img) return;
+      viewerPhotos = [...grid.querySelectorAll('.tile img')];
+      prevBtn.hidden = nextBtn.hidden = viewerPhotos.length < 2;
+      showPhoto(viewerPhotos.indexOf(img));
+      viewer.showModal();
+    });
+
+    prevBtn.addEventListener('click', () => showPhoto(viewerIndex - 1));
+    nextBtn.addEventListener('click', () => showPhoto(viewerIndex + 1));
+    viewer.addEventListener('keydown', (e) => {
+      if (viewerPhotos.length < 2) return;
+      if (e.key === 'ArrowLeft') showPhoto(viewerIndex - 1);
+      if (e.key === 'ArrowRight') showPhoto(viewerIndex + 1);
+    });
+
+    document.getElementById('viewerClose').addEventListener('click', () => viewer.close());
+    // Clicking the backdrop closes the viewer; the photo and buttons do not.
+    viewer.addEventListener('click', (e) => {
+      if (e.target !== viewerImg && !e.target.closest('button')) viewer.close();
+    });
+    viewer.addEventListener('close', () => viewerImg.removeAttribute('src'));
 
     function escapeHtml(s) {
       return (s || '').replace(/[&<>"']/g, (c) => ({
