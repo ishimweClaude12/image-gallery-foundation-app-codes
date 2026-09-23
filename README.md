@@ -62,9 +62,10 @@ npm start         # needs DB_* and S3_BUCKET set to do anything useful
 The workflow authenticates to AWS with OIDC, so there are no stored keys. It
 needs one repository variable:
 
-- `AWS_ROLE_ARN` = the CI role ARN from the foundation stack output
-  `kivu-gallery-ci-role-arn`. Set it under
-  **Settings > Secrets and variables > Actions > Variables**.
+- `AWS_ACCOUNT_ID` = the AWS account that holds the foundation stack's
+  `kivu-gallery-ci-role`. Set it under
+  **Settings > Secrets and variables > Actions > Variables** (or on the `dev`
+  environment), alongside `AWS_REGION`.
 
 ## What a push does
 

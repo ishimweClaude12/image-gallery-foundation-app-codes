@@ -24,15 +24,18 @@ jobs:
     environment: dev
     needs: test
     runs-on: ubuntu-latest
+    env:
+      PROJECT: kivu-gallery
+      ECR_REPO: kivu-gallery-app
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # Set AWS_ROLE_ARN as a repository secret to the CI role created by
-          # the foundation stack (output kivu-gallery-ci-role-arn).
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          # CI role created by the foundation stack. Set AWS_ACCOUNT_ID as a
+          # variable on the dev environment (or repository).
+          role-to-assume:  ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Log in to Amazon ECR
