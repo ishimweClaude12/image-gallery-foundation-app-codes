@@ -16,13 +16,13 @@ const upload = multer({
 export function createApp() {
   const app = express();
   app.use(express.json());
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  app.use(express.static(path.join(__dirname, "..", "public")));
 
   // Health check for the ALB target group. Stays independent of the database
   // so a transient DB issue does not fail the task's health check.
-  app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+  app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
-  app.get('/api/photos', async (req, res) => {
+  app.get("/api/photos", async (req, res) => {
     try {
       const photos = await listPhotos();
       res.json(
@@ -31,22 +31,24 @@ export function createApp() {
           description: p.description,
           url: imageUrl(p.s3_key),
           createdAt: p.created_at,
-        }))
+        })),
       );
     } catch (err) {
-      console.error('Failed to list photos:', err.message);
-      res.status(500).json({ error: 'Failed to load photos' });
+      console.error("Failed to list photos:", err.message);
+      res.status(500).json({ error: "Failed to load photos" });
     }
   });
 
-  app.post('/api/photos', upload.single('image'), async (req, res) => {
+  app.post("/api/photos", upload.single("image"), async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({ error: 'An image file is required' });
+        return res.status(400).json({ error: "An image file is required" });
       }
-      const description = (req.body.description || '').toString().slice(0, 500);
-      const rawExt = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase();
-      const ext = rawExt.replace(/[^a-z0-9]/g, '') || 'jpg';
+      const description = (req.body.description || "").toString().slice(0, 500);
+      const rawExt = (
+        req.file.originalname.split(".").pop() || "jpg"
+      ).toLowerCase();
+      const ext = rawExt.replace(/[^a-z0-9]/g, "") || "jpg";
       const id = randomUUID();
       const key = `photos/${id}.${ext}`;
 
@@ -60,9 +62,14 @@ export function createApp() {
 
       res.status(201).json({ id, description, url: imageUrl(key) });
     } catch (err) {
-      console.error('Upload failed:', err.message);
-      res.status(500).json({ error: 'Upload failed' });
+      console.error("Upload failed:", err.message);
+      res.status(500).json({ error: "Upload failed" });
     }
+  });
+
+  // Catch-all route to serve the frontend for any other requests (SPA behavior)
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "..", "public", "index.html"));
   });
 
   return app;
