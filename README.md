@@ -126,16 +126,20 @@ needs one repository variable:
 ## What a push does
 
 1. Runs the tests.
-2. Builds the image and pushes two tags to ECR: the commit SHA and `latest`.
-3. Renders `taskdef.json` from parameters the infrastructure stack publishes
-   under `/kivu-gallery/deploy/*`, zips it with `appspec.yaml`, and uploads
-   `config-source.zip` to the artifact bucket.
+2. Builds the image and pushes it to ECR tagged with the commit SHA (every
+   branch). SHA tags are immutable; a re-run skips the push if it exists.
+3. On `main` only: renders `taskdef.json` from parameters the infrastructure
+   stack publishes under `/kivu-gallery/deploy/*`, zips it with `appspec.yaml`,
+   and uploads `config-source.zip` to the artifact bucket.
+4. On `main` only: pushes the same image as `latest`. The pipeline watches
+   `latest`, so this push starts the blue/green deployment through
+   CodePipeline and CodeDeploy. `latest` is the one tag the foundation stack
+   leaves mutable.
 
-Step 3 is skipped automatically if those parameters do not exist yet, so you can
-push this repo before the infrastructure stack is deployed. The image still
-lands in ECR. Once `aws-infrastructure` is up, push again (or re-run the
-workflow) and the deploy bundle publishes, at which point an ECR push triggers
-the blue/green deployment through CodePipeline and CodeDeploy.
+Steps 3 and 4 are skipped if the infrastructure parameters do not exist yet, so
+you can push this repo before the infrastructure stack is deployed. The SHA
+image still lands in ECR. Once the infrastructure is up, re-run the workflow on
+`main` to deploy.
 
 ## Dependency this repo has on the rest of the lab
 

@@ -1,13 +1,19 @@
 name: build-and-push
 
 on:
-  # Every push, on every branch (and tag).
+  # Every push, on every branch (and tag). Only main deploys.
   push:
 
 # Required for OIDC federation with AWS (no long-lived credentials).
 permissions:
   id-token: write
   contents: read
+
+# One deploy at a time per ref, so two quick main pushes cannot interleave
+# their deploy bundle uploads and "latest" pushes.
+concurrency:
+  group: build-and-push-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -17,7 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - run: npm test
 
   build-push-deploy:
@@ -27,56 +34,57 @@ jobs:
     env:
       PROJECT: kivu-gallery
       ECR_REPO: kivu-gallery-app
+      IS_MAIN: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # CI role created by the foundation stack. Set AWS_ACCOUNT_ID as a
-          # variable on the dev environment (or repository).
-          role-to-assume:  ${{ secrets.AWS_ROLE_ARN }}
+          # Set AWS_ROLE_ARN as a secret (on the dev environment or repository)
+          # to the CI role created by the foundation stack
+          # (output kivu-gallery-ci-role-arn).
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Log in to Amazon ECR
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag and push image
+      - name: Build image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           set -euo pipefail
           IMAGE_URI="$REGISTRY/${ECR_REPO}"
-          docker build -t "$IMAGE_URI:${{ github.sha }}" .
-          # Every branch gets an immutable SHA tag for traceability. This push
-          # does not start a deployment; only moving "latest" does.
-          docker push "$IMAGE_URI:${{ github.sha }}"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+          docker build -t "$IMAGE_URI:${{ github.sha }}" -t "$IMAGE_URI:latest" .
 
-      - name: Promote image to latest (starts the blue/green deploy)
-        if: github.ref == 'refs/heads/main'
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
+      - name: Push commit SHA tag
         run: |
           set -euo pipefail
-          IMAGE_URI="$REGISTRY/${ECR_REPO}"
-          docker tag "$IMAGE_URI:${{ github.sha }}" "$IMAGE_URI:latest"
-          # The pipeline's ECR source action watches "latest", so this is the
-          # push that deploys. Restricted to main so branch pushes only build.
-          docker push "$IMAGE_URI:latest"
+          # SHA tags are immutable in ECR. On a re-run the tag already exists
+          # (same commit, same image), so skip the push instead of failing.
+          if docker manifest inspect "$IMAGE_URI:${{ github.sha }}" >/dev/null 2>&1; then
+            echo "$IMAGE_URI:${{ github.sha }} already exists, skipping push."
+          else
+            docker push "$IMAGE_URI:${{ github.sha }}"
+          fi
 
       - name: Generate and upload deploy bundle
-        if: github.ref == 'refs/heads/main'
+        id: bundle
+        if: env.IS_MAIN == 'true'
         run: |
           set -euo pipefail
           PREFIX="/${PROJECT}/deploy"
 
           # The deploy bundle needs values published by the infrastructure
-          # stack. If they are not there yet, skip this step so the image push
-          # still succeeds. Deploy aws-infrastructure, then re-run this workflow.
+          # stack. If they are not there yet, stop here: the SHA image is in
+          # ECR, and without a bundle there is nothing for the pipeline to
+          # deploy. Deploy the infrastructure stack, then re-run this workflow.
           if ! aws ssm get-parameter --name "$PREFIX/execution-role-arn" >/dev/null 2>&1; then
-            echo "Infrastructure parameters not found under $PREFIX."
-            echo "Image is in ECR. Deploy aws-infrastructure, then re-run to publish the deploy bundle."
+            echo "::warning::Infrastructure parameters not found under $PREFIX. Skipping deploy."
+            echo "uploaded=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -115,3 +123,14 @@ jobs:
           zip -j config-source.zip taskdef.json appspec.yaml
           aws s3 cp config-source.zip "s3://${ARTIFACT_BUCKET}/config-source.zip"
           echo "Uploaded config-source.zip to ${ARTIFACT_BUCKET}"
+          echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Promote image to latest (starts the blue/green deploy)
+        if: steps.bundle.outputs.uploaded == 'true'
+        run: |
+          set -euo pipefail
+          # The pipeline's ECR source action watches "latest", so this push is
+          # what deploys. It runs after the bundle upload so the pipeline never
+          # starts ahead of config-source.zip. ECR keeps every tag immutable
+          # except "latest" (foundation stack exclusion filter).
+          docker push "$IMAGE_URI:latest"
