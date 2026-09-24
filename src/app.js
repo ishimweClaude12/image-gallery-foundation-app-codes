@@ -3,8 +3,8 @@ import multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listPhotos, insertPhoto } from './db.js';
-import { uploadImage, imageUrl } from './s3.js';
+import { listPhotos, insertPhoto, deletePhoto } from './db.js';
+import { uploadImage, deleteImage, imageUrl } from './s3.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -12,6 +12,8 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per image
 });
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createApp() {
   const app = express();
@@ -64,6 +66,30 @@ export function createApp() {
     } catch (err) {
       console.error("Upload failed:", err.message);
       res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  app.delete("/api/photos/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!UUID_RE.test(id)) {
+      return res.status(400).json({ error: "Invalid photo id" });
+    }
+    try {
+      const key = await deletePhoto(id);
+      if (!key) {
+        return res.status(404).json({ error: "Photo not found" });
+      }
+      // The row is already gone, so a failed S3 delete only leaves an orphaned
+      // object behind; the photo still disappears from the gallery.
+      try {
+        await deleteImage(key);
+      } catch (err) {
+        console.error(`Failed to delete S3 object ${key}:`, err.message);
+      }
+      res.status(204).end();
+    } catch (err) {
+      console.error("Delete failed:", err.message);
+      res.status(500).json({ error: "Delete failed" });
     }
   });
 

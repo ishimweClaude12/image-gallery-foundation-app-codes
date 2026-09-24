@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const region = process.env.AWS_REGION || 'eu-north-1';
 const bucket = process.env.S3_BUCKET;
@@ -16,6 +16,10 @@ export async function uploadImage(key, body, contentType) {
       ContentType: contentType,
     })
   );
+}
+
+export async function deleteImage(key) {
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 // Images are served through CloudFront, not directly from S3 (the bucket is

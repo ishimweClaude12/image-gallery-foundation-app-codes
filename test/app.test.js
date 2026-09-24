@@ -31,6 +31,18 @@ test('POST /api/photos without a file returns 400', async () => {
   }
 });
 
+test('DELETE /api/photos/:id with an invalid id returns 400', async () => {
+  const app = createApp();
+  const server = app.listen(0);
+  const { port } = server.address();
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/photos/not-a-uuid`, { method: 'DELETE' });
+    assert.strictEqual(res.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
 test('GET / serves the gallery page', async () => {
   const app = createApp();
   const server = app.listen(0);

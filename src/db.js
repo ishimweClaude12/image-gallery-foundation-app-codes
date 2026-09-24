@@ -48,4 +48,10 @@ export async function insertPhoto({ id, description, s3Key, contentType }) {
   );
 }
 
+// Deletes the row and returns its S3 key, or null if no photo had that id.
+export async function deletePhoto(id) {
+  const { rows } = await pool.query('DELETE FROM photos WHERE id = $1 RETURNING s3_key', [id]);
+  return rows[0]?.s3_key ?? null;
+}
+
 export { pool };

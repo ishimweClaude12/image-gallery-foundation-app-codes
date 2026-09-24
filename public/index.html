@@ -4,76 +4,219 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kivu Gallery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0f1419;
-      --card: #1a2029;
-      --accent: #2dd4bf;
-      --text: #e6edf3;
-      --muted: #8b98a5;
-      --border: #2a323d;
+      --mist: #eef1ee;
+      --surface: #ffffff;
+      --lake: #1f4e5f;
+      --lake-soft: #d6e2e3;
+      --basalt: #1d2426;
+      --stone: #5f6b69;
+      --line: #d3dad7;
+      --ember: #b83a22;
+      --ember-soft: #f6e1dc;
+      --radius-photo: 14px;
+      --radius-control: 999px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --mist: #0f1a1e;
+        --surface: #16252b;
+        --lake: #8fc3cf;
+        --lake-soft: #1d3640;
+        --basalt: #e7eeec;
+        --stone: #93a3a1;
+        --line: #26393f;
+        --ember: #f07a61;
+        --ember-soft: #3a1f1a;
+      }
     }
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      font-family: "Bricolage Grotesque", system-ui, sans-serif;
+      font-optical-sizing: auto;
+      font-size: 1rem;
+      line-height: 1.5;
+      background: var(--mist);
+      color: var(--basalt);
     }
-    header {
-      padding: 28px 20px;
-      border-bottom: 1px solid var(--border);
-      text-align: center;
-    }
-    header h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.5px; }
-    header p { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; }
-    main { max-width: 1000px; margin: 0 auto; padding: 24px 20px 60px; }
-    .uploader {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 32px;
+    button, input { font: inherit; color: inherit; }
+    :focus-visible { outline: 2px solid var(--lake); outline-offset: 3px; }
+
+    .shell { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+    /* Masthead: the wordmark is the only loud type on the page. */
+    .masthead {
       display: grid;
-      gap: 12px;
+      grid-template-columns: 1fr minmax(300px, 420px);
+      gap: 40px;
+      align-items: end;
+      padding: 56px 0 40px;
     }
-    .uploader input[type="text"],
-    .uploader input[type="file"] {
-      width: 100%;
-      padding: 10px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-size: 0.95rem;
+    .wordmark {
+      margin: 0;
+      font-size: clamp(3.2rem, 9vw, 7.5rem);
+      font-weight: 800;
+      font-stretch: 75%;
+      line-height: 0.86;
+      letter-spacing: -0.035em;
+      color: var(--lake);
     }
-    .uploader button {
-      justify-self: start;
-      padding: 10px 20px;
-      background: var(--accent);
-      color: #05201c;
+    .lede { margin: 14px 0 0; color: var(--stone); font-size: 1.05rem; max-width: 42ch; }
+    .count { color: var(--basalt); font-weight: 600; }
+
+    /* Upload */
+    .uploader { display: grid; gap: 10px; }
+    .drop {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1.5px dashed var(--line);
+      border-radius: var(--radius-photo);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop:hover, .drop.dragging { border-color: var(--lake); }
+    .drop.dragging { background: var(--lake-soft); }
+    .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .drop:has(input:focus-visible) { outline: 2px solid var(--lake); outline-offset: 3px; }
+    .thumb {
+      flex: none;
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      background: var(--lake-soft) center / cover no-repeat;
+      display: grid;
+      place-items: center;
+      color: var(--lake);
+    }
+    .thumb.has-image svg { display: none; }
+    .drop-text { min-width: 0; }
+    .drop-text strong { display: block; font-weight: 600; }
+    .drop-text span {
+      display: block;
+      color: var(--stone);
+      font-size: 0.875rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row { display: flex; gap: 8px; }
+    .row input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 11px 18px;
+      background: var(--surface);
+      border: 1.5px solid var(--line);
+      border-radius: var(--radius-control);
+    }
+    .row input[type="text"]:focus { border-color: var(--lake); outline: none; }
+    .btn {
+      padding: 11px 22px;
       border: none;
-      border-radius: 8px;
+      border-radius: var(--radius-control);
       font-weight: 600;
       cursor: pointer;
+      white-space: nowrap;
     }
-    .uploader button:disabled { opacity: 0.6; cursor: default; }
-    .status { font-size: 0.85rem; color: var(--muted); min-height: 1em; }
-    .grid {
+    .btn:disabled { opacity: 0.55; cursor: default; }
+    .btn-primary { background: var(--lake); color: var(--mist); }
+    .btn-quiet { background: transparent; border: 1.5px solid var(--line); }
+    .btn-danger { background: var(--ember); color: #fff; }
+    .status { min-height: 1.3em; font-size: 0.875rem; color: var(--stone); }
+    .status.error { color: var(--ember); }
+
+    /* Gallery: natural aspect ratios in columns so each photo keeps its shape. */
+    .gallery {
+      columns: 3 280px;
+      column-gap: 18px;
+      padding: 8px 0 80px;
+      border-top: 1.5px solid var(--line);
+      padding-top: 28px;
+    }
+    .photo {
+      position: relative;
+      break-inside: avoid;
+      margin: 0 0 18px;
+    }
+    .photo img {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 120px;
+      background: var(--lake-soft);
+      border-radius: var(--radius-photo);
+      cursor: zoom-in;
+    }
+    .photo figcaption {
+      padding: 8px 4px 0;
+      font-size: 0.925rem;
+      color: var(--basalt);
+      overflow-wrap: anywhere;
+    }
+    .photo figcaption.none { color: var(--stone); }
+    .photo time { display: block; font-size: 0.8rem; color: var(--stone); }
+    .photo.removing { opacity: 0.35; pointer-events: none; transition: opacity 0.2s; }
+
+    .delete {
+      position: absolute;
+      top: 10px;
+      right: 10px;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ember);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s, color 0.15s;
     }
-    .tile {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
+    .photo:hover .delete, .delete:focus-visible { opacity: 1; }
+    .delete:hover { background: var(--ember); color: #fff; }
+    @media (hover: none) { .delete { opacity: 1; } }
+
+    .empty {
+      column-span: all;
+      padding: 72px 0;
+      text-align: center;
+      color: var(--stone);
     }
-    .tile img { width: 100%; height: 180px; object-fit: cover; display: block; }
-    .tile .caption { padding: 12px 14px; font-size: 0.9rem; color: var(--text); }
-    .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-    .tile img { cursor: zoom-in; }
+    .empty strong { display: block; color: var(--basalt); font-size: 1.25rem; font-weight: 600; }
+
+    /* Confirm dialog */
+    .confirm {
+      width: min(400px, calc(100vw - 32px));
+      padding: 24px;
+      border: none;
+      border-radius: 18px;
+      background: var(--surface);
+      color: var(--basalt);
+    }
+    .confirm::backdrop { background: rgba(15, 26, 30, 0.55); }
+    .confirm h2 { margin: 0 0 6px; font-size: 1.25rem; font-weight: 700; }
+    .confirm p { margin: 0 0 20px; color: var(--stone); }
+    .confirm img {
+      display: block;
+      width: 100%;
+      max-height: 180px;
+      object-fit: cover;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .confirm .actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* Viewer */
     .viewer {
       width: 100vw;
       height: 100vh;
@@ -83,9 +226,9 @@
       padding: 0;
       border: none;
       background: transparent;
-      color: var(--text);
+      color: #e7eeec;
     }
-    .viewer::backdrop { background: rgba(5, 8, 12, 0.94); }
+    .viewer::backdrop { background: rgba(10, 18, 21, 0.95); }
     .viewer figure {
       margin: 0;
       height: 100%;
@@ -94,76 +237,101 @@
       align-items: center;
       justify-content: center;
       gap: 14px;
-      padding: 56px 16px 24px;
+      padding: 64px 88px 28px;
     }
-    .viewer img {
+    .viewer figure img {
       max-width: 100%;
-      max-height: calc(100vh - 140px);
+      max-height: calc(100vh - 150px);
       object-fit: contain;
-      border-radius: 6px;
+      border-radius: 8px;
     }
-    .viewer figcaption { color: var(--muted); font-size: 0.95rem; text-align: center; max-width: 70ch; }
-    .viewer .close {
+    .viewer figcaption { color: #b5c3c1; text-align: center; max-width: 70ch; }
+    .viewer .tool {
       position: fixed;
-      top: 14px;
-      right: 16px;
-      width: 40px;
-      height: 40px;
-      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 50%;
-      background: var(--card);
-      color: var(--text);
-      font-size: 1.4rem;
-      line-height: 1;
+      background: rgba(255, 255, 255, 0.06);
+      color: #e7eeec;
       cursor: pointer;
     }
-    .viewer .nav {
-      position: fixed;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 48px;
-      height: 48px;
-      border: 1px solid var(--border);
-      border-radius: 50%;
-      background: var(--card);
-      color: var(--text);
-      font-size: 1.6rem;
-      line-height: 1;
-      cursor: pointer;
-      opacity: 0.85;
-    }
-    .viewer .nav:hover { opacity: 1; }
-    .viewer .nav.prev { left: 16px; }
-    .viewer .nav.next { right: 16px; }
+    .viewer .tool:hover { background: rgba(255, 255, 255, 0.14); }
+    .viewer .close { top: 16px; right: 16px; }
+    .viewer .viewer-delete { top: 16px; right: 72px; }
+    .viewer .viewer-delete:hover { background: var(--ember); border-color: var(--ember); }
+    .viewer .nav { top: 50%; transform: translateY(-50%); width: 52px; height: 52px; }
+    .viewer .prev { left: 18px; }
+    .viewer .next { right: 18px; }
     .viewer .nav[hidden] { display: none; }
-    .viewer figure { padding-left: 80px; padding-right: 80px; }
-    @media (max-width: 600px) {
-      .viewer figure { padding-left: 16px; padding-right: 16px; }
-      .viewer .nav { top: auto; bottom: 16px; transform: none; }
+
+    @media (max-width: 760px) {
+      .shell { padding: 0 16px; }
+      .masthead { grid-template-columns: 1fr; gap: 24px; padding: 36px 0 28px; }
+      .row { flex-direction: column; }
+      .viewer figure { padding: 64px 16px 88px; }
+      .viewer .nav { top: auto; bottom: 20px; transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Kivu Gallery</h1>
-    <p>Upload a photo with a description. Images are served through CloudFront.</p>
-  </header>
+  <div class="shell">
+    <header class="masthead">
+      <div>
+        <h1 class="wordmark">Kivu<br />Gallery</h1>
+        <p class="lede">Photos from the lake and beyond. <span class="count" id="count"></span></p>
+      </div>
 
-  <main>
-    <div class="uploader">
-      <input type="file" id="file" accept="image/*" />
-      <input type="text" id="description" placeholder="Describe this photo" maxlength="500" />
-      <button id="uploadBtn">Upload</button>
-      <div class="status" id="status"></div>
+      <form class="uploader" id="uploader">
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="image/*" aria-label="Choose a photo" />
+          <span class="thumb" id="thumb">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+          </span>
+          <span class="drop-text">
+            <strong id="dropTitle">Choose a photo</strong>
+            <span id="dropHint">or drop it here. Up to 10 MB.</span>
+          </span>
+        </label>
+        <div class="row">
+          <input type="text" id="description" placeholder="Add a description" maxlength="500" />
+          <button class="btn btn-primary" id="uploadBtn" type="submit">Upload photo</button>
+        </div>
+        <div class="status" id="status" role="status"></div>
+      </form>
+    </header>
+
+    <main class="gallery" id="grid" aria-live="polite"></main>
+  </div>
+
+  <dialog class="confirm" id="confirm" aria-labelledby="confirmTitle">
+    <img id="confirmImg" alt="" />
+    <h2 id="confirmTitle">Delete this photo?</h2>
+    <p>It will be removed from the gallery for everyone. This can't be undone.</p>
+    <div class="actions">
+      <button class="btn btn-quiet" id="confirmCancel" type="button">Keep photo</button>
+      <button class="btn btn-danger" id="confirmOk" type="button">Delete photo</button>
     </div>
-
-    <div class="grid" id="grid"></div>
-  </main>
+  </dialog>
 
   <dialog class="viewer" id="viewer" aria-label="Photo viewer">
-    <button class="close" id="viewerClose" aria-label="Close">&times;</button>
-    <button class="nav prev" id="viewerPrev" aria-label="Previous photo">&lsaquo;</button>
-    <button class="nav next" id="viewerNext" aria-label="Next photo">&rsaquo;</button>
+    <button class="tool close" id="viewerClose" aria-label="Close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <button class="tool viewer-delete" id="viewerDelete" aria-label="Delete photo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/></svg>
+    </button>
+    <button class="tool nav prev" id="viewerPrev" aria-label="Previous photo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+    <button class="tool nav next" id="viewerNext" aria-label="Next photo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
     <figure>
       <img id="viewerImg" alt="" />
       <figcaption id="viewerCaption"></figcaption>
@@ -172,70 +340,29 @@
 
   <script>
     const grid = document.getElementById('grid');
+    const count = document.getElementById('count');
     const status = document.getElementById('status');
     const btn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('file');
+    const descInput = document.getElementById('description');
+    const drop = document.getElementById('drop');
+    const thumb = document.getElementById('thumb');
+    const dropTitle = document.getElementById('dropTitle');
+    const dropHint = document.getElementById('dropHint');
     const viewer = document.getElementById('viewer');
     const viewerImg = document.getElementById('viewerImg');
     const viewerCaption = document.getElementById('viewerCaption');
-
-    async function loadPhotos() {
-      try {
-        const res = await fetch('/api/photos');
-        if (!res.ok) throw new Error('request failed');
-        const photos = await res.json();
-        if (!photos.length) {
-          grid.innerHTML = '<div class="empty">No photos yet. Upload the first one.</div>';
-          return;
-        }
-        grid.innerHTML = photos.map((p) => `
-          <div class="tile">
-            <img src="${p.url}" data-caption="${escapeHtml(p.description)}" alt="${escapeHtml(p.description)}" loading="lazy" />
-            <div class="caption">${escapeHtml(p.description) || '<span style="color:var(--muted)">No description</span>'}</div>
-          </div>
-        `).join('');
-      } catch (err) {
-        grid.innerHTML = '<div class="empty">Could not load photos.</div>';
-      }
-    }
-
     const prevBtn = document.getElementById('viewerPrev');
     const nextBtn = document.getElementById('viewerNext');
-    let viewerPhotos = [];
+    const confirmDialog = document.getElementById('confirm');
+    const confirmImg = document.getElementById('confirmImg');
+
+    const trashIcon = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/></svg>';
+    const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+    let photos = [];
     let viewerIndex = 0;
-
-    function showPhoto(index) {
-      // Wrap around at both ends.
-      viewerIndex = (index + viewerPhotos.length) % viewerPhotos.length;
-      const img = viewerPhotos[viewerIndex];
-      viewerImg.src = img.src;
-      viewerImg.alt = img.alt;
-      viewerCaption.textContent = img.dataset.caption;
-    }
-
-    // Open the clicked photo full screen. Esc closes the dialog natively.
-    grid.addEventListener('click', (e) => {
-      const img = e.target.closest('.tile img');
-      if (!img) return;
-      viewerPhotos = [...grid.querySelectorAll('.tile img')];
-      prevBtn.hidden = nextBtn.hidden = viewerPhotos.length < 2;
-      showPhoto(viewerPhotos.indexOf(img));
-      viewer.showModal();
-    });
-
-    prevBtn.addEventListener('click', () => showPhoto(viewerIndex - 1));
-    nextBtn.addEventListener('click', () => showPhoto(viewerIndex + 1));
-    viewer.addEventListener('keydown', (e) => {
-      if (viewerPhotos.length < 2) return;
-      if (e.key === 'ArrowLeft') showPhoto(viewerIndex - 1);
-      if (e.key === 'ArrowRight') showPhoto(viewerIndex + 1);
-    });
-
-    document.getElementById('viewerClose').addEventListener('click', () => viewer.close());
-    // Clicking the backdrop closes the viewer; the photo and buttons do not.
-    viewer.addEventListener('click', (e) => {
-      if (e.target !== viewerImg && !e.target.closest('button')) viewer.close();
-    });
-    viewer.addEventListener('close', () => viewerImg.removeAttribute('src'));
+    let statusTimer;
 
     function escapeHtml(s) {
       return (s || '').replace(/[&<>"']/g, (c) => ({
@@ -243,31 +370,154 @@
       }[c]));
     }
 
-    btn.addEventListener('click', async () => {
-      const fileInput = document.getElementById('file');
-      const description = document.getElementById('description').value;
-      if (!fileInput.files.length) {
-        status.textContent = 'Please choose an image first.';
+    function setStatus(text, isError = false) {
+      clearTimeout(statusTimer);
+      status.textContent = text;
+      status.classList.toggle('error', isError);
+      if (text && !isError) statusTimer = setTimeout(() => (status.textContent = ''), 3000);
+    }
+
+    function render() {
+      count.textContent = photos.length ? `${photos.length} photo${photos.length === 1 ? '' : 's'}.` : '';
+      if (!photos.length) {
+        grid.innerHTML = '<div class="empty"><strong>No photos yet</strong>Upload the first one above.</div>';
         return;
       }
+      grid.innerHTML = photos.map((p, i) => `
+        <figure class="photo" data-id="${p.id}">
+          <img src="${p.url}" data-index="${i}" alt="${escapeHtml(p.description) || 'Untitled photo'}" loading="lazy" />
+          <button class="delete" data-id="${p.id}" aria-label="Delete photo" title="Delete photo">${trashIcon}</button>
+          <figcaption class="${p.description ? '' : 'none'}">
+            ${escapeHtml(p.description) || 'No description'}
+            ${p.createdAt ? `<time datetime="${p.createdAt}">${dateFmt.format(new Date(p.createdAt))}</time>` : ''}
+          </figcaption>
+        </figure>
+      `).join('');
+    }
+
+    async function loadPhotos() {
+      try {
+        const res = await fetch('/api/photos');
+        if (!res.ok) throw new Error('request failed');
+        photos = await res.json();
+        render();
+      } catch (err) {
+        grid.innerHTML = '<div class="empty"><strong>Photos didn\'t load</strong>Check your connection and refresh the page.</div>';
+      }
+    }
+
+    // Resolves true when the person confirms, false when they cancel or press Esc.
+    function askToDelete(photo) {
+      confirmImg.src = photo.url;
+      confirmDialog.showModal();
+      return new Promise((resolve) => {
+        confirmDialog.addEventListener('close', () => resolve(confirmDialog.returnValue === 'delete'), { once: true });
+      });
+    }
+    document.getElementById('confirmOk').addEventListener('click', () => confirmDialog.close('delete'));
+    document.getElementById('confirmCancel').addEventListener('click', () => confirmDialog.close('cancel'));
+    confirmDialog.addEventListener('cancel', () => (confirmDialog.returnValue = 'cancel'));
+
+    async function deletePhoto(id) {
+      const photo = photos.find((p) => p.id === id);
+      if (!photo) return false;
+      confirmDialog.returnValue = '';
+      if (!(await askToDelete(photo))) return false;
+
+      const tile = grid.querySelector(`.photo[data-id="${id}"]`);
+      tile?.classList.add('removing');
+      try {
+        const res = await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+        if (!res.ok && res.status !== 404) throw new Error('delete failed');
+        photos = photos.filter((p) => p.id !== id);
+        render();
+        setStatus('Photo deleted.');
+        return true;
+      } catch (err) {
+        tile?.classList.remove('removing');
+        setStatus('Couldn\'t delete the photo. Try again.', true);
+        return false;
+      }
+    }
+
+    function showPhoto(index) {
+      // Wrap around at both ends.
+      viewerIndex = (index + photos.length) % photos.length;
+      const p = photos[viewerIndex];
+      viewerImg.src = p.url;
+      viewerImg.alt = p.description || 'Untitled photo';
+      viewerCaption.textContent = p.description;
+      prevBtn.hidden = nextBtn.hidden = photos.length < 2;
+    }
+
+    grid.addEventListener('click', (e) => {
+      const del = e.target.closest('.delete');
+      if (del) return deletePhoto(del.dataset.id);
+      const img = e.target.closest('.photo img');
+      if (!img) return;
+      showPhoto(Number(img.dataset.index));
+      viewer.showModal();
+    });
+
+    prevBtn.addEventListener('click', () => showPhoto(viewerIndex - 1));
+    nextBtn.addEventListener('click', () => showPhoto(viewerIndex + 1));
+    viewer.addEventListener('keydown', (e) => {
+      if (photos.length < 2) return;
+      if (e.key === 'ArrowLeft') showPhoto(viewerIndex - 1);
+      if (e.key === 'ArrowRight') showPhoto(viewerIndex + 1);
+    });
+    document.getElementById('viewerClose').addEventListener('click', () => viewer.close());
+    document.getElementById('viewerDelete').addEventListener('click', async () => {
+      const index = viewerIndex;
+      if (!(await deletePhoto(photos[index].id))) return;
+      if (!photos.length) return viewer.close();
+      showPhoto(Math.min(index, photos.length - 1));
+    });
+    // Clicking the backdrop closes the viewer; the photo and buttons do not.
+    viewer.addEventListener('click', (e) => {
+      if (e.target !== viewerImg && !e.target.closest('button')) viewer.close();
+    });
+    viewer.addEventListener('close', () => viewerImg.removeAttribute('src'));
+
+    function showChosenFile() {
+      const file = fileInput.files[0];
+      if (!file) {
+        thumb.classList.remove('has-image');
+        thumb.style.backgroundImage = '';
+        dropTitle.textContent = 'Choose a photo';
+        dropHint.textContent = 'or drop it here. Up to 10 MB.';
+        return;
+      }
+      thumb.classList.add('has-image');
+      thumb.style.backgroundImage = `url(${URL.createObjectURL(file)})`;
+      dropTitle.textContent = 'Ready to upload';
+      dropHint.textContent = file.name;
+    }
+    fileInput.addEventListener('change', showChosenFile);
+    ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, () => drop.classList.add('dragging')));
+    ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('dragging')));
+
+    document.getElementById('uploader').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!fileInput.files.length) return setStatus('Choose a photo first.', true);
       const form = new FormData();
       form.append('image', fileInput.files[0]);
-      form.append('description', description);
+      form.append('description', descInput.value);
 
       btn.disabled = true;
-      status.textContent = 'Uploading...';
+      setStatus('Uploading…');
       try {
         const res = await fetch('/api/photos', { method: 'POST', body: form });
         if (!res.ok) throw new Error('upload failed');
-        status.textContent = 'Uploaded.';
         fileInput.value = '';
-        document.getElementById('description').value = '';
+        descInput.value = '';
+        showChosenFile();
         await loadPhotos();
+        setStatus('Photo uploaded.');
       } catch (err) {
-        status.textContent = 'Upload failed. Please try again.';
+        setStatus('Upload failed. Check the file is an image under 10 MB and try again.', true);
       } finally {
         btn.disabled = false;
-        setTimeout(() => (status.textContent = ''), 3000);
       }
     });
 

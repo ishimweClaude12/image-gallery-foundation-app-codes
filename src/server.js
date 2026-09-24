@@ -2,7 +2,7 @@ import './env.js';
 import { createApp } from './app.js';
 import { initDb } from './db.js';
 
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT); // No fallback to 3000, since we want to fail if PORT is not set. This is a requirement for the AWS Elastic Beanstalk environment.
 
 async function start() {
   try {
