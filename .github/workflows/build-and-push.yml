@@ -82,10 +82,16 @@ jobs:
           # stack. If they are not there yet, stop here: the SHA image is in
           # ECR, and without a bundle there is nothing for the pipeline to
           # deploy. Deploy the infrastructure stack, then re-run this workflow.
-          if ! aws ssm get-parameter --name "$PREFIX/execution-role-arn" >/dev/null 2>&1; then
-            echo "::warning::Infrastructure parameters not found under $PREFIX. Skipping deploy."
-            echo "uploaded=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # Any other error (e.g. AccessDenied) fails the job instead of
+          # being mistaken for a missing parameter.
+          if ! ERR=$(aws ssm get-parameter --name "$PREFIX/execution-role-arn" 2>&1 >/dev/null); then
+            if [[ "$ERR" == *ParameterNotFound* ]]; then
+              echo "::warning::Infrastructure parameters not found under $PREFIX. Skipping deploy."
+              echo "uploaded=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Failed to read $PREFIX/execution-role-arn: $ERR"
+            exit 1
           fi
 
           get() { aws ssm get-parameter --name "$PREFIX/$1" --query 'Parameter.Value' --output text; }

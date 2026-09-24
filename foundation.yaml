@@ -2,9 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   Kivu Gallery foundation stack (deployed via Git sync). Shared, slow-changing
   resources that the application and infrastructure repos depend on: the ECR
-  repository, the private image bucket, the pipeline artifact bucket, the
-  GitHub OIDC provider, and the GitHub Actions CI role. All values other repos
-  need are published as cross-stack Exports.
+  repository, the private image bucket, the pipeline artifact bucket, and the
+  GitHub Actions CI role. The account's existing GitHub OIDC provider is reused.
+  All values other repos need are published as cross-stack Exports.
 
 Parameters:
   ProjectName:
@@ -16,23 +16,26 @@ Parameters:
     Description: GitHub organization or username that owns the repositories.
   AppRepoName:
     Type: String
-    Default: nodejs-application
+    Default: image-gallery-foundation-app-codes
     Description: Application repo allowed to assume the CI role via OIDC.
 
 Resources:
 
   # -------------------------------------------------------------------------
   # Container registry for the application image.
-  # Mutable tags so the workflow can move the "latest" tag on each push, which
-  # is what the pipeline's ECR source action tracks to start a deploy. Every
-  # image is also tagged with its commit SHA for traceability. Scans on push;
-  # keeps only the 10 most recent images.
+  # Immutable tags so every commit SHA is a distinct, traceable image, which is
+  # what blue/green needs. "latest" is excluded so the workflow can move it on
+  # each main push; that push is what the pipeline tracks to start a deploy.
+  # Scans on push; keeps only the 10 most recent images.
   # -------------------------------------------------------------------------
   AppEcrRepository:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Sub '${ProjectName}-app'
-      ImageTagMutability: MUTABLE
+      ImageTagMutability: IMMUTABLE_WITH_EXCLUSION
+      ImageTagMutabilityExclusionFilters:
+        - ImageTagMutabilityExclusionFilterType: WILDCARD
+          ImageTagMutabilityExclusionFilterValue: latest
       ImageScanningConfiguration:
         ScanOnPush: true
       EncryptionConfiguration:
@@ -112,23 +115,9 @@ Resources:
           Value: !Ref ProjectName
 
   # -------------------------------------------------------------------------
-  # GitHub OIDC identity provider. Lets GitHub Actions exchange a short-lived
-  # workflow token for AWS credentials, so no long-lived keys are stored.
-  # -------------------------------------------------------------------------
-  GitHubOidcProvider:
-    Type: AWS::IAM::OIDCProvider
-    Properties:
-      Url: https://token.actions.githubusercontent.com
-      ClientIdList:
-        - sts.amazonaws.com
-      ThumbprintList:
-        - 6938fd4d98bab03faadb97b34396831e3780aea1
-        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
-
-  # -------------------------------------------------------------------------
   # CI role assumed by the application repo's GitHub Actions workflow.
   # Scoped to: push to this ECR repo, and write build artifacts to the
-  # artifact bucket. Trust is locked to the nodejs-application repo.
+  # artifact bucket. Trust is locked to the application repo (AppRepoName).
   # -------------------------------------------------------------------------
   GitHubActionsCiRole:
     Type: AWS::IAM::Role
@@ -140,7 +129,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Federated: !Ref GitHubOidcProvider
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals:
